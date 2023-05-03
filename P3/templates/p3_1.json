@@ -1,0 +1,92 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "First Activity - Practica 3 - Computacion en la Nube",
+    "Resources": {
+        "sshGateSecurityGroup": {
+            "Type" : "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription" : "Security Group for SSH access",
+                "GroupName" : "sshGateSecurityGroup",
+                "SecurityGroupIngress" : [{
+                    "IpProtocol": "tcp",
+                    "FromPort": 22,
+                    "ToPort": 22,
+                    "CidrIp": "0.0.0.0/0"
+                }]
+            }
+        },
+
+        "webServerSecurityGroup": {
+            "Type" : "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription" : "Security Group for Web Servers",
+                "GroupName" : "webServerSecurityGroup",
+                "SecurityGroupIngress" : [{
+                    "IpProtocol": "tcp",
+                    "FromPort": 22,
+                    "ToPort": 22,
+                    "SourceSecurityGroupName" : "sshGateSecurityGroup"
+                },
+                {
+					"IpProtocol" : "tcp",
+					"FromPort" : 80,
+					"ToPort" : 80,
+					"CidrIp" : "0.0.0.0/0"
+				}]
+            }
+        },
+
+        "sshGateKey": {
+            "Type": "AWS::EC2::KeyPair",
+            "Properties": {
+                "KeyName": "sshGateKey",
+                "KeyType": "rsa"
+            }
+        },
+
+        "webServerKey": {
+            "Type": "AWS::EC2::KeyPair",
+            "Properties": {
+                "KeyName": "webServerKey",
+                "KeyType": "rsa"
+            }
+        },
+
+        "sshGateInstance": {
+            "Type": "AWS::EC2::Instance",
+            "Properties": {
+                "ImageId": "ami-09d3b3274b6c5d4aa",
+                "InstanceType": "t2.micro",
+				"SecurityGroupIds": [
+					{
+						"Ref": "sshGateSecurityGroup"
+					}
+				],
+                "KeyName": {
+                    "Ref": "sshGateKey"
+                }
+            }
+        },
+
+        "webServerInstance": {
+            "Type": "AWS::EC2::Instance",
+            "Properties": {
+                "ImageId": "ami-09d3b3274b6c5d4aa",
+                "InstanceType": "t2.micro",
+				"SecurityGroupIds": [
+					{
+						"Ref": "webServerSecurityGroup"
+					}
+				],
+                "KeyName": {
+                    "Ref": "webServerKey"
+                },
+                "UserData": {
+                    "Fn::Base64": {
+                        "Fn::Sub": "#!/bin/bash\nyum update -y\nyum install -y httpd\nsystemctl enable httpd\nsystemctl start httpd\necho \"<html><h1>El servidor de Raul: Generado por CloudFormation</h1></html>\" > /var/www/html/index.html\n"
+                    }
+                }
+            }
+        }
+    }
+}

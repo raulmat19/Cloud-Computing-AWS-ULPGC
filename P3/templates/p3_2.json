@@ -1,0 +1,198 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "Second Activity - Practica 3 - Computacion en la Nube",
+    "Resources": {
+        "ELBSecurityGroup": {
+            "Type" : "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription" : "Security Group for Load Balancers",
+                "GroupName" : "ELBSecurityGroup",
+                "SecurityGroupIngress" : [{
+					"IpProtocol" : "tcp",
+					"FromPort" : 80,
+					"ToPort" : 80,
+					"CidrIp" : "0.0.0.0/0"
+				}]
+            }
+        },
+
+        "webServersSecurityGroup": {
+            "Type" : "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription" : "Security Group for Web Servers",
+                "GroupName" : "webServersSecurityGroup",
+                "SecurityGroupIngress" : [{
+					"IpProtocol" : "tcp",
+					"FromPort" : 80,
+					"ToPort" : 80,
+					"SourceSecurityGroupId": {
+                        "Fn::GetAtt": [
+                            "ELBSecurityGroup",
+                            "GroupId"
+                        ]
+                    }
+				}]
+            }
+        },
+
+        "webServersKey": {
+            "Type": "AWS::EC2::KeyPair",
+            "Properties": {
+                "KeyName": "webServersKey",
+                "KeyType": "rsa"
+            }
+        },
+
+        "webServer1Instance": {
+            "Type": "AWS::EC2::Instance",
+            "Properties": {
+                "ImageId": "ami-09d3b3274b6c5d4aa",
+                "InstanceType": "t2.micro",
+				"SecurityGroupIds": [
+					{
+						"Ref": "webServersSecurityGroup"
+					}
+				],
+                "KeyName": {
+                    "Ref": "webServersKey"
+                },
+                "UserData": {
+                    "Fn::Base64": {
+                        "Fn::Sub": "#!/bin/bash\nyum update -y\nyum install -y httpd\nsystemctl enable httpd\nsystemctl start httpd\necho Servidor: $(hostname -f) - Generado por CloudFormation> /var/www/html/index.html\n"
+                    }
+                }
+            }
+        },
+
+        "webServer2Instance": {
+            "Type": "AWS::EC2::Instance",
+            "Properties": {
+                "ImageId": "ami-09d3b3274b6c5d4aa",
+                "InstanceType": "t2.micro",
+				"SecurityGroupIds": [
+					{
+						"Ref": "webServersSecurityGroup"
+					}
+				],
+                "KeyName": {
+                    "Ref": "webServersKey"
+                },
+                "UserData": {
+                    "Fn::Base64": {
+                        "Fn::Sub": "#!/bin/bash\nyum update -y\nyum install -y httpd\nsystemctl enable httpd\nsystemctl start httpd\necho Servidor: $(hostname -f) - Generado por CloudFormation> /var/www/html/index.html\n"
+                    }
+                }
+            }
+        },
+
+        "webServerLaunchTemplate": {
+            "Type": "AWS::EC2::LaunchTemplate",
+            "Properties": {
+                "LaunchTemplateName": "Launch-Template",
+                "LaunchTemplateData": {
+					"SecurityGroupIds":[{
+                        "Fn::GetAtt": [
+                            "webServersSecurityGroup",
+                            "GroupId"
+                        ]
+                    }],
+                    "ImageId": "ami-09d3b3274b6c5d4aa",
+					"InstanceType": "t2.micro",
+                    "KeyName": {
+                        "Ref": "webServersKey"
+                    },
+                    "UserData": {
+                        "Fn::Base64": {
+                            "Fn::Sub": "#!/bin/bash\nyum update -y\nyum install -y httpd\nsystemctl enable httpd\nsystemctl start httpd\necho Servidor: $(hostname -f) - Generado por CloudFormation y Launch Template> /var/www/html/index.html\n"
+                        }
+                    }
+                }
+            }
+        },
+
+        "autoScalingGroup": {
+            "Type" : "AWS::AutoScaling::AutoScalingGroup",
+            "Properties" : {
+                "AutoScalingGroupName" : "Auto-Scaling-Group",
+                "AvailabilityZones" : [ 
+                    "us-east-1b",
+                    "us-east-1c"
+                ],
+                "DesiredCapacity" : "1",
+                "HealthCheckType" : "ELB",
+                "LaunchTemplate": {
+                    "LaunchTemplateId": {
+                        "Ref": "webServerLaunchTemplate"
+                    },
+                    "Version": {
+                        "Fn::GetAtt": [
+                            "webServerLaunchTemplate",
+                            "LatestVersionNumber"
+                        ]
+                    }
+                },
+                "MaxSize" : "2",
+                "MinSize" : "1",
+                "TargetGroupARNs" : [ { "Ref": "ELBTargetGroup"}]
+            }
+        },
+
+        "AppLoadBalancer": {
+            "Type" : "AWS::ElasticLoadBalancingV2::LoadBalancer",
+            "Properties" : {
+                "IpAddressType" : "ipv4",
+                "Name" : "AppLoadBalancer",
+                "Scheme" : "internet-facing",
+                "Subnets" : [ "subnet-00db343d4ea75c3f8", "subnet-067218daac8437c2d"],
+                "SecurityGroups": [
+                    {
+                        "Fn::GetAtt": [
+                            "ELBSecurityGroup",
+                            "GroupId"
+                        ]
+                    }
+                ]
+            }
+        },
+        
+        "ELBListener": {
+            "Type" : "AWS::ElasticLoadBalancingV2::Listener",
+            "Properties" : {
+                "DefaultActions" : [{
+                    "Type": "forward",
+                    "TargetGroupArn": { "Ref": "ELBTargetGroup"}
+                }],
+                "LoadBalancerArn" : { "Ref": "AppLoadBalancer"},
+                "Port" : 80,
+                "Protocol" : "HTTP"
+            }
+        },
+
+        "ELBTargetGroup": {
+            "Type" : "AWS::ElasticLoadBalancingV2::TargetGroup",
+            "Properties" : {
+                "HealthCheckIntervalSeconds" : 30,
+                "HealthCheckPath" : "/",
+                "HealthCheckTimeoutSeconds" : 5,
+                "HealthyThresholdCount" : 2,
+                "Matcher" : {"HttpCode": "200"},
+                "Name" : "ELBTargetGroup",
+                "Port" : 80,
+                "Protocol" : "HTTP",
+                "Targets": [
+                    {
+                        "Id": { "Ref": "webServer1Instance"},
+                        "Port": 80
+                    },
+
+                    {
+                        "Id": { "Ref": "webServer2Instance"},
+                        "Port": 80
+                    }
+                ],
+                "UnhealthyThresholdCount" : 5,
+                "VpcId" : "vpc-088febf7f494a9d6b"
+            }
+        }
+    }
+}
